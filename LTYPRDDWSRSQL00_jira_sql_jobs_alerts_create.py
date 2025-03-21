@@ -7,16 +7,19 @@ import sys
 
 def create_jira_issue(sql_server):
     SQL_QUERY = """
-                select  j.name as 'JobName', 
-                        msdb.dbo.agent_datetime(jh.run_date, jh.run_time) as 'ExecutionDate',  
-                        jh.message 'Message' 
-                from msdb.dbo.sysjobhistory jh 
-                    inner join msdb.dbo.sysjobs j 
-                        on j.job_id = jh.job_id 
-                where jh.step_id = 0 
-                and   jh.run_status = 0 
-                and   not exists (select 0 from DBA.dbo.sql_agent_jira_tickets jt where jt.JobName = j.name and jt.ExecutionDate = msdb.dbo.agent_datetime(jh.run_date, jh.run_time) and jt.Message = jh.message) 
-                and   cast(msdb.dbo.agent_datetime(jh.run_date, jh.run_time) as date) > '2024-06-10'
+                select	ItemPath JobName,
+                        TimeStart ExecutionDate,
+                        Status 'Message'
+                from ReportServer.dbo.ExecutionLog3 j
+                where RequestType = 'Subscription'
+                and   cast(timestart as date) > '2024-06-10'
+                and   status <> 'rsSuccess'     
+                and   UserName = 'BRIDGE2SOLUTION\\SVC_CentralSQL'           
+                and   not exists (select 0 
+                                    from DBA.dbo.sql_agent_jira_tickets jt 
+                                    where jt.JobName = j.ItemPath COLLATE SQL_Latin1_General_CP1_CI_AS
+                                    and jt.ExecutionDate = j.TimeStart 
+                                    and jt.Message = j.Status COLLATE SQL_Latin1_General_CP1_CI_AS) 
                 order by 2
                 """
     
@@ -54,8 +57,8 @@ def create_jira_issue(sql_server):
                 
                 #create the issue
                 new_issue = jira.create_issue(  project= "DA", 
-                                                summary= "JOB FAILURE - " + df_job["JobName"].values[0] + " (" + sql_server + ")"  ,    
-                                                description= df_job["Message"].values[0] + " - at " + str(df_job["ExecutionDate"].values[0]), 
+                                                summary= "SSRS SUBSCRIPTION FAILURE - " + df_job["JobName"].values[0] + " (" + sql_server + ")"  ,    
+                                                description= df_job["Message"].values[0] + " - at " + str(df_job["ExecutionDate"].values[0]) + " - Check RSLOG file for error details", 
                                                 issuetype={'name': JIRA_TICKET_TYPE }                              
                                                 )
                 print(new_issue) 
@@ -74,11 +77,11 @@ def create_jira_issue(sql_server):
         
             
     except Exception as error:        
-        print("ERROR:" + str(error))
+        #print("ERROR:" + str(error))
         sys.exit(1)
 
 output = create_jira_issue(      
-                        sql_server = "LTYPRDDWSISQL00",  
+                        sql_server = "LTYPRDDWSRSQL00",  
                         )
 
 print(output)
